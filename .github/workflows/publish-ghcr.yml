@@ -31,7 +31,7 @@ jobs:
           images: ghcr.io/lucassfontes/youtube-music-zimaos
           tags: |
             type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=raw,value=1.5.6,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=1.5.7,enable=${{ github.ref == 'refs/heads/main' }}
             type=semver,pattern={{version}}
       - name: Construir e publicar imagem (amd64)
         uses: docker/build-push-action@v6
