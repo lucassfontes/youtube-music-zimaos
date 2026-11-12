@@ -1,0 +1,8 @@
+# Alternativa para construir localmente se o GHCR estiver indisponível.
+# Use: docker compose -f compose.yaml -f compose.local.yaml up -d --build
+services:
+  youtube-music:
+    image: youtube-music-zimaos:1.5.5-local
+    build:
+      context: .
+      dockerfile: Dockerfile

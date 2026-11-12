@@ -1,0 +1,51 @@
+name: youtube-music-zimaos
+services:
+  youtube-music:
+    image: ghcr.io/lucassfontes/youtube-music-zimaos:1.5.5
+    container_name: youtube-music-zimaos
+    restart: unless-stopped
+    init: true
+    ports:
+      - "${APP_PORT:-8787}:8787"
+    environment:
+      TZ: ${TZ:-Europe/Brussels}
+      COOKIE_SECURE: ${COOKIE_SECURE:-false}
+    volumes:
+      # As pastas ficam dentro deste projeto, mesmo após reiniciar/recriar o container.
+      - ./dados:/config
+      - ./musicas:/music
+      - ./videos:/videos
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/api/health', timeout=5)"]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+      start_period: 30s
+
+# Metadados exibidos ao importar como aplicativo personalizado no ZimaOS.
+# Para caminhos absolutos na importação pelo ZimaOS, gere
+# zimaos-compose.yaml no menu do inicializador.
+x-casaos:
+  id: com.lucassfontes.youtube-music-zimaos
+  main: youtube-music
+  index: /
+  scheme: http
+  port_map: "${APP_PORT:-8787}"
+  icon: "${APP_ICON_URL:-https://raw.githubusercontent.com/lucassfontes/youtube-music-zimaos/main/app/static/icon.png}"
+  title:
+    en_US: YouTube Music ZimaOS
+    pt_BR: YouTube Music ZimaOS
+  tagline:
+    en_US: Search, listen to audio and save music on your server
+    pt_BR: Buscar, ouvir e salvar músicas no servidor
+  description:
+    en_US: Private local music and video download manager with an audio-only player.
+    pt_BR: Gerenciador local para baixar MP3 e MP4 por nome do canal, com player de áudio.
+  category: Entertainment
+  author: Lucas Fontes
+  developer: Lucas Fontes
+  version: "1.5.5"
+  architectures:
+    - amd64

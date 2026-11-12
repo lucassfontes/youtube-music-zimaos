@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#0b101a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Music Station" />
+  <title>YouTube Music • ZimaOS</title>
+  <link rel="icon" type="image/png" href="/icon.png" />
+  <link rel="apple-touch-icon" href="/icon.png" />
+  <link rel="stylesheet" href="/style.css" />
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <main id="auth" class="auth-page" hidden>
+    <section class="auth-card">
+      <div class="brand-icon large"><img src="/icon.png" alt="Music Station" /></div>
+      <p class="eyebrow">ZIMAOS • BIBLIOTECA MUSICAL</p>
+      <h1 id="auth-title">Primeiro acesso</h1>
+      <p class="muted" id="auth-desc">Crie seu usuário e senha para proteger o painel de downloads.</p>
+      <form id="auth-form">
+        <label for="username">Usuário</label>
+        <input type="text" id="username" name="username" autocomplete="username" minlength="3" maxlength="40" required placeholder="Seu usuário" />
+        <label for="password">Senha</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" minlength="6" maxlength="128" required placeholder="Mínimo de 6 caracteres" />
+        <button id="auth-submit" class="btn primary full" type="submit">Continuar</button>
+      </form>
+      <p class="inline-msg" id="auth-msg" role="status"></p>
+      <small class="muted">Sua sessão fica salva neste navegador por até 30 dias.</small>
+    </section>
+  </main>
+
+  <div id="app" class="app-shell" hidden>
+    <aside class="sidebar" aria-label="Menu principal">
+      <div class="brand"><div class="brand-icon"><img src="/icon.png" alt="" /></div><div class="brand-words"><b>Music Station</b><small>ZimaOS</small></div></div>
+      <div class="nav-caption">NAVEGAÇÃO</div>
+      <nav class="main-nav" aria-label="Áreas do aplicativo" role="tablist" aria-orientation="vertical">
+        <button class="nav-tab is-active" role="tab" type="button" data-tab="search" id="tab-search" aria-selected="true" aria-controls="pane-search" title="Buscar músicas"><span class="nav-icon"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.2"/><path d="m15.6 15.6 5 5"/></svg></span><span class="nav-text">Buscar músicas</span></button>
+        <button class="nav-tab" role="tab" type="button" data-tab="link" id="tab-link" aria-selected="false" aria-controls="pane-link" title="Baixar por link"><span class="nav-icon"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m-4-4 4 4 4-4"/><path d="M4 17v3h16v-3"/></svg></span><span class="nav-text">Baixar por link</span></button>
+        <button class="nav-tab" role="tab" type="button" data-tab="downloads" id="tab-downloads" aria-selected="false" aria-controls="pane-downloads" title="Downloads"><span class="nav-icon"><svg viewBox="0 0 24 24" width="21" height="21" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16"/></svg></span><span class="nav-text">Downloads</span></button>
+      </nav>
+      <div class="sidebar-note"><span class="small-label">SUA BIBLIOTECA</span><p>Músicas organizadas pelo nome do canal.</p><div class="file-example"><span>📁 musicas/</span><span>└ 📁 Cantor</span><span>　 └ ♫ Música.mp3</span><span>📁 videos/</span><span>└ 📁 Canal / Vídeo.mp4</span></div></div>
+      <div class="sidebar-footer"><span id="account-name">Usuário</span><button id="logout" class="text-button" type="button" title="Sair">Sair</button></div>
+    </aside>
+    <div class="content">
+      <header class="topbar">
+        <div class="mobile-topbar-brand" aria-hidden="true"><img src="/icon.png" alt="" /><strong>Music Station</strong></div>
+        <span class="breadcrumb" id="current-section">Buscar músicas</span>
+        <div class="topbar-right"><span class="version">v1.5.5</span><button id="mobile-logout" class="mobile-logout" type="button" title="Sair da conta" aria-label="Sair da conta"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H4"/><path d="M12 3h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7"/></svg></button></div>
+      </header>
+      <main class="page-inner">
+        <section class="tab-pane active" id="pane-search" role="tabpanel" aria-labelledby="tab-search" data-pane="search">
+          <div class="heading compact-heading"><div><p class="eyebrow">ENCONTRE E ESCUTE</p><h1>Pesquisar músicas</h1><p class="muted">Pesquise músicas ou vídeos. Somente áudio no player; escolha MP3 ou MP4 para baixar.</p></div><div class="storage-status"><span class="status-light"></span> Servidor conectado</div></div>
+          <section class="panel search-panel">
+            <form id="search-form" class="url-form" role="search">
+              <label class="sr-only" for="search-query">Pesquisar música ou cantor</label>
+              <input type="search" id="search-query" minlength="2" maxlength="120" required placeholder="Digite o nome da música ou cantor..." autocomplete="off" />
+              <button type="submit" id="search-btn" class="btn primary">⌕ Buscar</button>
+            </form>
+            <div class="video-pref"><label for="video-quality">Qualidade do vídeo:</label><select id="video-quality" aria-label="Qualidade dos downloads de vídeo"><option value="360">360p</option><option value="480">480p</option><option value="720" selected>720p</option><option value="1080">1080p</option></select><span>MP4, se disponível na qualidade escolhida. O download mantém áudio e vídeo.</span></div><p id="search-msg" class="inline-msg" role="status"></p>
+            <div class="results-scroll" id="results-scroll" tabindex="0" aria-label="Resultados, role aqui para carregar mais músicas">
+              <div id="search-results" class="search-results"><p class="empty">Pesquise uma música ou artista para começar.</p></div>
+              <div id="search-pagination" class="search-pagination" hidden><p id="search-scroll-status" class="muted" role="status"></p><button type="button" id="search-more" class="btn secondary">Carregar mais resultados ↓</button></div>
+              <div id="search-sentinel" class="search-sentinel" aria-hidden="true"></div>
+            </div>
+          </section>
+        </section>
+        <section class="tab-pane" id="pane-link" role="tabpanel" aria-labelledby="tab-link" data-pane="link" hidden>
+          <div class="heading compact-heading"><div><p class="eyebrow">DOWNLOAD INDIVIDUAL</p><h1>Baixar por link</h1><p class="muted">Baixe MP3 ou vídeo MP4 para pastas separadas no projeto.</p></div></div>
+          <section class="panel hero-panel">
+            <div class="section-heading"><div class="mini-icon">↧</div><div><h2>Cole o link do YouTube</h2><p>Informe o endereço de um vídeo do YouTube ou YouTube Music.</p></div></div>
+            <form id="analyze-form" class="url-form"><label class="sr-only" for="video-url">URL do vídeo</label><input type="url" id="video-url" required placeholder="https://www.youtube.com/watch?v=..." spellcheck="false" /><button type="submit" id="analyze-btn" class="btn primary">Analisar vídeo →</button></form>
+            <p class="helper">Os downloads entram na fila. Cantor, título e álbum podem ser editados depois na aba Downloads.</p><p class="inline-msg" id="analyze-msg" role="status"></p>
+          </section>
+          <section id="preview" class="panel preview-panel" hidden>
+            <div class="panel-top"><div><p class="eyebrow">CONFERÊNCIA</p><h2>Confira o nome do canal e da música</h2></div><span id="confidence" class="status-chip">Conferir</span></div>
+            <div class="preview-layout"><img id="video-cover" class="cover" alt="Capa da música" hidden /><div class="preview-fields"><div class="field-grid"><div><label for="music-artist">Cantor / nome do canal *</label><input id="music-artist" maxlength="120" placeholder="Ex.: Marília Mendonça" required /></div><div><label for="music-track">Nome da música *</label><input id="music-track" maxlength="180" placeholder="Nome da música" required /></div></div><label for="music-album">Álbum (opcional)</label><input id="music-album" maxlength="120" placeholder="Nome do álbum" /><p class="metadata-info" id="metadata-info"></p><div class="action-row"><button class="btn primary" id="download-btn" type="button">↧ Baixar MP3</button><button class="btn secondary" id="download-video-btn" type="button">▣ Baixar vídeo MP4</button><button class="btn secondary" id="clear-preview" type="button">Cancelar</button></div><p class="inline-msg" id="download-msg" role="status"></p></div></div>
+          </section>
+        </section>
+        <section class="tab-pane" id="pane-downloads" role="tabpanel" aria-labelledby="tab-downloads" data-pane="downloads" hidden>
+          <div class="heading compact-heading"><div><p class="eyebrow">ATIVIDADE</p><h1>Downloads</h1><p class="muted">Músicas MP3 e vídeos MP4: acompanhe, cancele, edite ou exclua.</p></div></div>
+          <section class="panel queue-panel"><div class="panel-top library-panel-top"><div><h2>Downloads e biblioteca</h2></div><div class="library-tools"><button class="btn secondary" id="repair-covers" type="button" title="Adicionar capas embutidas a MP3s antigos">Adicionar capas antigas</button><button class="btn subtle" id="refresh-jobs" type="button">↻ Atualizar</button></div></div><p class="cover-repair-status muted" id="cover-repair-status" role="status" hidden></p><div id="jobs-list" class="jobs-list"><p class="empty">Nenhum download ainda.</p></div><div class="history-more"><button id="more-jobs" type="button" class="btn secondary" hidden>Mostrar mais downloads</button></div></section>
+        </section>
+      </main>
+      <section id="player-panel" class="player-dock" aria-label="Reprodutor de música" hidden>
+        <img id="player-cover" class="audio-cover" alt="Capa da música atual" />
+        <div class="player-text"><span class="playing-label"><span class="now-playing-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></span><span id="player-state-label">OUVINDO AGORA</span></span><strong id="player-title">Reprodução</strong><span id="player-channel" class="muted"></span><p id="player-msg" class="inline-msg" role="status"></p></div>
+        <div class="player-center">
+          <div class="player-transport">
+            <button type="button" class="control-button transport-skip" id="player-prev" title="Faixa anterior" aria-label="Faixa anterior"><svg class="player-icon" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg"><path d="M4.5 5v14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M14 5.5 6 12l8 6.5v-13ZM22 5.5 14 12l8 6.5v-13Z" fill="currentColor" stroke="none"/></svg></button>
+            <button type="button" class="control-button hero-play" id="player-toggle" title="Tocar" aria-label="Tocar" aria-pressed="false"><span class="play-icon" aria-hidden="true"><svg class="player-icon" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg"><path d="M8 5.5v13l10.5-6.5z" fill="currentColor" stroke="none"/></svg></span><span class="pause-icon" aria-hidden="true"><svg class="player-icon" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg"><rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor"/></svg></span></button>
+            <button type="button" class="control-button transport-skip" id="player-next" title="Próxima faixa" aria-label="Próxima faixa"><svg class="player-icon" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg"><path d="M19.5 5v14" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="m2 5.5 8 6.5-8 6.5v-13Zm8 0 8 6.5-8 6.5v-13Z" fill="currentColor" stroke="none"/></svg></button>
+          </div>
+          <div class="seek-row"><span id="player-elapsed">0:00</span><input type="range" id="player-seek" min="0" max="1000" step="1" value="0" disabled aria-label="Progresso da música" /><span id="player-total">0:00</span></div>
+          <audio id="player-audio" preload="none" playsinline aria-label="Áudio da música"></audio>
+        </div>
+        <div class="player-extras"><span id="player-stream-mode" class="stream-pill">Streaming de áudio</span><div class="volume-row"><button type="button" class="control-button volume-button" id="player-mute" title="Silenciar" aria-label="Silenciar" aria-pressed="false"><span class="volume-on-icon"><svg class="player-icon" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg"><path d="M11 5 6 9H3v6h3l5 4V5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18 6a8 8 0 0 1 0 12" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg></span><span class="volume-muted-icon"><svg class="player-icon" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg"><path d="M11 5 6 9H3v6h3l5 4V5Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" fill="none"/><path d="m16 9 5 6m0-6-5 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span></button><input id="player-volume" type="range" min="0" max="100" step="1" value="85" aria-label="Volume" /></div><button class="control-button stop-playback" id="close-player" type="button" title="Parar e fechar" aria-label="Parar e fechar"><svg class="player-icon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg"><path d="M18 6 6 18M6 6l12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></button></div>
+      </section>
+    </div>
+  </div>
+  <div id="toast-notice" class="toast-notice" role="status" hidden></div>
+  <dialog id="edit-dialog" class="music-dialog" aria-labelledby="edit-dialog-title">
+    <form id="edit-form" method="dialog" novalidate>
+      <div class="dialog-heading"><div><p class="eyebrow">ORGANIZAÇÃO</p><h2 id="edit-dialog-title">Editar música</h2></div><button type="button" class="dialog-close" id="edit-close" aria-label="Fechar">✕</button></div>
+      <p id="edit-hint" class="muted edit-hint"></p>
+      <label for="edit-artist">Cantor / nome do canal *</label><input id="edit-artist" required minlength="2" maxlength="120" />
+      <label for="edit-track">Nome da música *</label><input id="edit-track" required maxlength="180" />
+      <label for="edit-album">Álbum (opcional)</label><input id="edit-album" maxlength="120" />
+      <p id="edit-msg" class="inline-msg" role="status"></p>
+      <div class="dialog-actions"><button id="edit-dismiss" class="btn secondary" type="button">Fechar</button><button id="edit-save" class="btn primary" type="submit">Salvar alterações</button></div>
+    </form>
+  </dialog>
+  <dialog id="delete-dialog" class="music-dialog" aria-labelledby="delete-dialog-title">
+    <div class="dialog-heading"><div><p class="eyebrow warning-text">ATENÇÃO</p><h2 id="delete-dialog-title">Excluir música?</h2></div><button type="button" class="dialog-close" id="delete-close" aria-label="Fechar">✕</button></div>
+    <p id="delete-desc" class="muted"></p>
+    <p id="delete-msg" class="inline-msg" role="status"></p>
+    <div class="dialog-actions"><button class="btn secondary" id="delete-dismiss" type="button">Voltar</button><button class="btn danger" id="delete-confirm" type="button">Excluir definitivamente</button></div>
+  </dialog>
+</body>
+</html>
