@@ -1,0 +1,58 @@
+name: com-lucassfontes-youtube-music-zimaos
+
+services:
+  preparar-pastas:
+    image: busybox:1.36.1
+    user: "0:0"
+    restart: "no"
+    volumes:
+      - /DATA/AppData/YouTube_Music:/biblioteca
+    entrypoint: ["/bin/sh", "-ec"]
+    # O script é UM único argumento para sh -ec.
+    command:
+      - >-
+        mkdir -p /biblioteca/dados /biblioteca/Biblioteca/Musicas /biblioteca/Biblioteca/Videos &&
+        chown -R 1000:1000 /biblioteca/dados &&
+        chown 1000:1000 /biblioteca/Biblioteca/Musicas /biblioteca/Biblioteca/Videos
+
+  youtube-music:
+    image: ghcr.io/lucassfontes/youtube-music-zimaos:1.5.7
+    container_name: youtube-music-zimaos
+    depends_on:
+      preparar-pastas:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    init: true
+    ports:
+      - "8787:8787"
+    environment:
+      TZ: Europe/Brussels
+      COOKIE_SECURE: "false"
+    volumes:
+      - /DATA/AppData/YouTube_Music/dados:/config
+      - /DATA/AppData/YouTube_Music/Biblioteca/Musicas:/music
+      - /DATA/AppData/YouTube_Music/Biblioteca/Videos:/videos
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8787/api/health', timeout=5)"]
+      interval: 30s
+      timeout: 8s
+      retries: 3
+      start_period: 30s
+
+x-casaos:
+  id: com.lucassfontes.youtube-music-zimaos
+  main: youtube-music
+  index: /
+  scheme: http
+  port_map: "8787"
+  icon: https://raw.githubusercontent.com/lucassfontes/youtube-music-zimaos/main/app/static/icon.png
+  title:
+    en_US: YouTube Music
+    pt_BR: YouTube Music
+  category: Entertainment
+  author: Lucas Fontes
+  version: "1.5.7"
+  architectures:
+    - amd64
