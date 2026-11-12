@@ -13,9 +13,50 @@ async function api(path, method='GET', body=null) {
   });
   let data;
   try { data = await response.json(); } catch (_) { data = {}; }
-  if (!response.ok) throw Error(typeof data.detail === 'string' ? data.detail : `Erro HTTP ${response.status}`);
+  if (!response.ok) {
+    const detail = data.detail;
+    const error = new Error(typeof detail === 'string' ? detail : (detail?.message || `Erro HTTP ${response.status}`));
+    error.status = response.status;
+    error.code = (detail && typeof detail === 'object') ? detail.code : null;
+    error.details = detail;
+    throw error;
+  }
   return data;
 }
+// A decisão é sempre do usuário. Jamais substituímos ou duplicamos silenciosamente.
+function askExistingFile(details) {
+  return new Promise(resolve => {
+    const dialog = $('duplicate-dialog');
+    const suffix = details.media_type === 'video' ? 'MP4' : 'MP3';
+    $('duplicate-description').textContent = `Este ${suffix} já foi baixado e o arquivo realmente existe no servidor.`;
+    $('duplicate-path').textContent = details.path || '';
+    let settled = false;
+    function finish(value) {
+      if (settled) return;
+      settled = true;
+      dialog.removeEventListener('close', onClose);
+      if (dialog.open) dialog.close();
+      resolve(value);
+    }
+    function onClose() { finish(null); }
+    dialog.addEventListener('close', onClose);
+    $('duplicate-replace').onclick = () => finish('replace');
+    $('duplicate-keep').onclick = () => finish('keep_both');
+    $('duplicate-cancel').onclick = () => finish(null);
+    dialog.showModal();
+  });
+}
+async function createDownloadJob(payload) {
+  try {
+    return await api('/api/jobs', 'POST', payload);
+  } catch (error) {
+    if (error.status !== 409 || error.code !== 'file_exists') throw error;
+    const choice = await askExistingFile(error.details);
+    if (!choice) return null;
+    return await api('/api/jobs', 'POST', {...payload, existing_action:choice});
+  }
+}
+
 function msg(id, value='', error=false) {
   const target = $(id);
   target.textContent = value;
@@ -545,11 +586,12 @@ function searchCard(video) {
     if (button.disabled) return;
     button.disabled = true; button.textContent = 'Adicionando...';
     try {
-      await api('/api/jobs', 'POST', {
+      const result = await createDownloadJob({
         url:video.url, artist:video.channel || 'Canal não informado',
         track:trackFromSearch(video), album:'', media_type:mediaType,
         video_quality:Number($('video-quality').value)
       });
+      if (!result) { button.disabled=false; button.textContent=mediaType === 'video' ? '▣ MP4' : '↧ MP3'; return; }
       button.textContent = '✓ Na fila';
       toast(`${mediaType === 'video' ? 'Vídeo MP4' : 'Música MP3'} adicionado(a): ${video.title}. Edite em Downloads.`);
       refreshJobs();
@@ -691,7 +733,8 @@ async function queueFromLink(mediaType) {
   button.disabled = true;
   msg('download-msg', 'Adicionando à fila...');
   try {
-    const item = await api('/api/jobs','POST',{url:selectedUrl,artist,track,album,media_type:mediaType,video_quality:Number($('video-quality').value)});
+    const item = await createDownloadJob({url:selectedUrl,artist,track,album,media_type:mediaType,video_quality:Number($('video-quality').value)});
+    if (!item) {msg('download-msg', 'Download cancelado. Nenhum arquivo foi alterado.'); return;}
     msg('download-msg', `${mediaType === 'video' ? 'Vídeo' : 'Música'} adicionado(a) à fila (tarefa #${item.id}).`);
     $('preview').hidden = true;
     selectedUrl = null;
@@ -708,7 +751,8 @@ $('refresh-jobs').addEventListener('click', refreshJobs);
 
 const statusLabels = {
   pendente:'Na fila',baixando:'Baixando',convertendo:'Convertendo',finalizando:'Finalizando',
-  cancelando:'Cancelando',concluido:'Concluído',existente:'Já existia',erro:'Erro',cancelado:'Cancelado'
+  cancelando:'Cancelando',concluido:'Concluído',existente:'Já existia',ausente:'Arquivo ausente',
+  substituido:'Substituído',erro:'Erro',cancelado:'Cancelado'
 };
 let editTarget = null;
 let deleteTarget = null;
@@ -838,7 +882,7 @@ function jobElement(job) {
       try { await api(`/api/jobs/${job.id}/cancel`,'POST'); toast(`Cancelamento solicitado: ${job.track}`);refreshJobs(); }
       catch(e){toast(e.message,true);}
     }));
-  } else if (['concluido','cancelado','erro','existente'].includes(job.status)) {
+  } else if (['concluido','cancelado','erro','existente','ausente','substituido'].includes(job.status)) {
     controls.append(smallButton('▤ Excluir','delete',() => openDelete(job)));
   }
   side.append(controls);

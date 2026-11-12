@@ -48,7 +48,7 @@
       <header class="topbar">
         <div class="mobile-topbar-brand" aria-hidden="true"><img src="/icon.png" alt="" /><strong>Music Station</strong></div>
         <span class="breadcrumb" id="current-section">Buscar músicas</span>
-        <div class="topbar-right"><span class="version">v1.5.5</span><button id="mobile-logout" class="mobile-logout" type="button" title="Sair da conta" aria-label="Sair da conta"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H4"/><path d="M12 3h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7"/></svg></button></div>
+        <div class="topbar-right"><span class="version">v1.5.6</span><button id="mobile-logout" class="mobile-logout" type="button" title="Sair da conta" aria-label="Sair da conta"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H4"/><path d="M12 3h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7"/></svg></button></div>
       </header>
       <main class="page-inner">
         <section class="tab-pane active" id="pane-search" role="tabpanel" aria-labelledby="tab-search" data-pane="search">
@@ -101,6 +101,17 @@
     </div>
   </div>
   <div id="toast-notice" class="toast-notice" role="status" hidden></div>
+  <dialog id="duplicate-dialog" class="music-dialog" aria-labelledby="duplicate-title">
+    <div class="dialog-heading"><div><p class="eyebrow">ARQUIVO ENCONTRADO</p><h2 id="duplicate-title">Este download já existe</h2></div></div>
+    <p id="duplicate-description" class="muted"></p>
+    <p id="duplicate-path" class="duplicate-path"></p>
+    <p class="muted">Como deseja continuar? O arquivo anterior só será substituído depois que o novo estiver pronto.</p>
+    <div class="dialog-actions duplicate-actions">
+      <button class="btn secondary" id="duplicate-cancel" type="button">Cancelar</button>
+      <button class="btn secondary" id="duplicate-keep" type="button">Manter os dois</button>
+      <button class="btn primary" id="duplicate-replace" type="button">Substituir</button>
+    </div>
+  </dialog>
   <dialog id="edit-dialog" class="music-dialog" aria-labelledby="edit-dialog-title">
     <form id="edit-form" method="dialog" novalidate>
       <div class="dialog-heading"><div><p class="eyebrow">ORGANIZAÇÃO</p><h2 id="edit-dialog-title">Editar música</h2></div><button type="button" class="dialog-close" id="edit-close" aria-label="Fechar">✕</button></div>

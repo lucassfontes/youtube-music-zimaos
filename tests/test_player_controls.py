@@ -32,5 +32,5 @@ class PlayerControlsTests(unittest.TestCase):
         self.assertIn('aria-valuetext',js)
     def test_version_consistent(self):
         for rel in ('README.md','app/main.py','iniciar.sh','compose.yaml','app/static/index.html'):
-            self.assertIn('1.5.5',(ROOT/rel).read_text(),rel)
+            self.assertIn('1.5.6',(ROOT/rel).read_text(),rel)
 if __name__=='__main__': unittest.main()

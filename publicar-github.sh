@@ -1,77 +1,54 @@
 #!/usr/bin/env bash
-# Publicação inicial e atualizações do projeto no GitHub de lucassfontes.
-# Precisa de git + GitHub CLI (gh) e login no navegador.
+# Publica atualizações no repositório existente SEM forçar o histórico (sem force push).
 set -euo pipefail
-cd -- "$(dirname -- "${BASH_SOURCE[0]}")"
+SOURCE_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO='lucassfontes/youtube-music-zimaos'
-
-echo
-printf '   YouTube Music ZimaOS v1.5.5 — publicar no GitHub\n\n'
-for bin in git gh; do
-  if ! command -v "$bin" >/dev/null 2>&1; then
-    printf 'Falta %s. No Ubuntu/Zorin: sudo apt update && sudo apt install git gh\n' "$bin" >&2
+for cmd in git gh tar mktemp; do
+  if ! command -v "$cmd" >/dev/null 2>&1; then
+    echo "Comando ausente: $cmd. Instale-o antes de publicar." >&2
     exit 1
   fi
 done
 if ! gh auth status >/dev/null 2>&1; then
-  echo 'Conecte sua conta GitHub. O gh mostrará instruções para autenticação.'
   gh auth login --hostname github.com --git-protocol https --web
 fi
-USER_LOGIN="$(gh api user --jq .login)"
-if [[ "$USER_LOGIN" != 'lucassfontes' ]]; then
-  printf 'Conta conectada: %s. Este projeto está configurado para lucassfontes.\n' "$USER_LOGIN" >&2
+login="$(gh api user --jq .login)"
+if [[ "$login" != lucassfontes ]]; then echo "Conta diferente da proprietária: $login" >&2; exit 1; fi
+printf 'Destino: https://github.com/%s\nVersão: 1.5.6\n' "$REPO"
+read -r -p 'Autoriza atualizar publicamente o repositório com esta versão? [s/N]: ' answer
+[[ "$answer" =~ ^[sS]([iI][mM])?$ ]] || { echo 'Cancelado.'; exit 0; }
+gh auth setup-git >/dev/null
+if ! gh repo view "$REPO" >/dev/null 2>&1; then
+  gh repo create "$REPO" --public --description 'YouTube Music ZimaOS: player e downloads MP3/MP4'
+fi
+work="$(mktemp -d)"
+trap 'rm -rf -- "$work"' EXIT
+git clone "https://github.com/${REPO}.git" "$work/repo"
+if ! git -C "$work/repo" show-ref --verify --quiet refs/heads/main; then
+  git -C "$work/repo" switch -c main
+fi
+# Só copia código e configurações; conteúdo do usuário fica na biblioteca do ZimaOS.
+(
+  cd "$SOURCE_DIR"
+  tar --exclude='./.git' --exclude='./.env' --exclude='./dados' --exclude='./musicas' \
+      --exclude='./videos' --exclude='./YouTube_Music' --exclude='./.venv' \
+      --exclude='./__pycache__' --exclude='*/__pycache__' --exclude='./.pytest_cache' \
+      --exclude='*.mp3' --exclude='*.mp4' --exclude='*.m4a' --exclude='*.webm' \
+      --exclude='*.db' --exclude='*.sqlite*' --exclude='*.zip' -cf - .
+) | (cd "$work/repo" && tar -xf -)
+cd "$work/repo"
+git config user.name "$login"
+git config user.email "$(gh api user --jq .id)+${login}@users.noreply.github.com"
+git add -A
+if git diff --cached --name-only | grep -E '(^|/)(\.env$|dados/|musicas/|videos/|YouTube_Music/)|\.(db|sqlite|mp3|mp4|m4a|webm)$' >/dev/null; then
+  echo 'Publicação interrompida: algum arquivo de mídia ou dado privado entrou no commit.' >&2
   exit 1
 fi
-printf 'Repositório: https://github.com/%s\n' "$REPO"
-echo 'ATENÇÃO: será criado um repositório PÚBLICO, como seus demais projetos.'
-echo 'As pastas dados/, musicas/, videos/ e o arquivo .env serão ignorados pelo Git.'
-read -r -p 'Confirmar publicação pública? [s/N]: ' ok
-[[ "$ok" =~ ^[sS]([iI][mM])?$ ]] || exit 0
-
-if [[ ! -d .git ]]; then
-  git init -b main 2>/dev/null || { git init; git branch -M main; }
+if git diff --cached --quiet; then
+  echo 'Não há novas alterações a publicar.'
+  exit 0
 fi
-# Configure identidade local sem incluir credenciais no código enviado.
-if ! git config user.name >/dev/null; then git config user.name "$USER_LOGIN"; fi
-if ! git config user.email >/dev/null; then
-  USER_ID="$(gh api user --jq .id)"
-  git config user.email "${USER_ID}+${USER_LOGIN}@users.noreply.github.com"
-fi
-# Comprovar que dados não serão publicados mesmo que já existam localmente.
-for item in .env dados/segredo-teste.sqlite musicas/faixa.mp3 videos/arquivo.mp4; do
-  if ! git check-ignore -q "$item" 2>/dev/null; then
-    printf 'AVISO: %s não parece ignorado! Confira .gitignore antes de continuar.\n' "$item" >&2
-    exit 1
-  fi
-done
-
-git add -A
-if ! git diff --cached --quiet; then
-  git commit -m 'Publicar YouTube Music ZimaOS v1.5.5 e pipeline GHCR'
-fi
-if git remote get-url origin >/dev/null 2>&1; then
-  remote="$(git remote get-url origin)"
-  case "$remote" in
-    *github.com/lucassfontes/youtube-music-zimaos|*github.com/lucassfontes/youtube-music-zimaos.git) ;;
-    *) echo "Remote origin inesperado: $remote" >&2; exit 1;;
-  esac
-else
-  git remote add origin "https://github.com/$REPO.git"
-fi
-
-if gh repo view "$REPO" >/dev/null 2>&1; then
-  echo 'Repositório existente: enviando alterações para main...'
-else
-  echo 'Criando o repositório público no GitHub...'
-  gh repo create "$REPO" --public --description 'Busca, player e downloads MP3/MP4 no ZimaOS com Docker/GHCR'
-fi
-git branch -M main
-gh auth setup-git >/dev/null
-git push -u origin main
-
-echo
-echo 'Arquivos publicados.'
-echo "Repositório: https://github.com/$REPO"
-echo "Acompanhe a imagem: https://github.com/$REPO/actions"
-echo 'Quando a Action terminar, marque a imagem GHCR como Public (Packages > Package settings > Change visibility).'
-echo 'Depois, no ZimaOS, use o compose.yaml e o iniciar.sh deste repositório.'
+git commit -m 'Atualizar YouTube Music ZimaOS para v1.5.6'
+git push origin main
+printf '\nCódigo publicado. Confira a construção em: https://github.com/%s/actions\n' "$REPO"
+echo 'Após sucesso da Action, a imagem 1.5.6 estará disponível no GHCR.'

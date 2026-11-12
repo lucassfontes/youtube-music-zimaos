@@ -36,15 +36,14 @@ from pydantic import BaseModel, Field
 
 from metadata import VIDEO_ID, clean, clean_filename, guess_metadata, youtube_video_url
 
-VERSION = '1.5.5'
+VERSION = '1.5.6'
 CONFIG = Path(os.environ.get('CONFIG_DIR', '/config'))
 MUSIC = Path(os.environ.get('MUSIC_DIR', '/music'))
 DB = CONFIG / 'app.db'
 
 
 def video_root() -> Path:
-    # Default sibling of /music, mounted as ./videos:/videos by Docker Compose.
-    # Derived dynamically to keep local test/storage paths isolated.
+    # Default /videos when MUSIC_DIR=/music; derived dynamically for isolated tests.
     return Path(os.environ.get('VIDEO_DIR', str(MUSIC.parent / 'videos')))
 
 STATIC = Path(__file__).parent / 'static'
@@ -103,6 +102,10 @@ def init_storage():
             c.execute("ALTER TABLE jobs ADD COLUMN media_type TEXT NOT NULL DEFAULT 'audio'")
         if 'video_quality' not in columns:
             c.execute('ALTER TABLE jobs ADD COLUMN video_quality INTEGER NOT NULL DEFAULT 720')
+        if 'existing_action' not in columns:
+            c.execute("ALTER TABLE jobs ADD COLUMN existing_action TEXT NOT NULL DEFAULT 'ask'")
+        if 'replace_path' not in columns:
+            c.execute("ALTER TABLE jobs ADD COLUMN replace_path TEXT NOT NULL DEFAULT ''")
         c.execute('CREATE INDEX IF NOT EXISTS idx_jobs_video ON jobs(video_id)')
 
 
@@ -182,6 +185,7 @@ class NewJob(VideoQuery):
     album: str = Field(default='', max_length=120)
     media_type: Literal['audio', 'video'] = 'audio'
     video_quality: int = Field(default=720, ge=360, le=1080)
+    existing_action: Literal['ask', 'replace', 'keep_both'] = 'ask'
 
 
 def status_update(job_id: int, status: str, message: str = '', progress: int | None = None, path: str | None = None):
@@ -837,6 +841,23 @@ def run_cover_repair():
             COVER_REPAIR_STATE['running'] = False
 
 
+def choose_final_path(root: Path, artist: str, track: str, suffix: str,
+                      action: str, replace_path: str) -> Path:
+    base = root / clean_filename(artist) / (clean_filename(track) + suffix)
+    if action == 'replace' and replace_path:
+        path = safe_media_path(replace_path, 'video' if suffix == '.mp4' else 'audio')
+        if path.is_symlink():
+            raise RuntimeError('Destino de substituição inválido: link simbólico.')
+        return path
+    if action == 'keep_both' and base.exists():
+        for idx in range(2, 10001):
+            path = base.with_name(f'{base.stem} ({idx}){suffix}')
+            if not path.exists() and not path.is_symlink():
+                return path
+        raise RuntimeError('Limite de arquivos com o mesmo nome atingido.')
+    return base
+
+
 def download(job_id: int):
     with DB_LOCK:
         with connect() as c:
@@ -905,14 +926,8 @@ def download(job_id: int):
         with DB_LOCK:
             check_cancel(job_id)
             with connect() as c:
-                latest = c.execute('SELECT artist,track,album FROM jobs WHERE id=?',(job_id,)).fetchone()
+                latest = c.execute('SELECT artist,track,album,existing_action,replace_path FROM jobs WHERE id=?',(job_id,)).fetchone()
             artist, track, album = latest['artist'], latest['track'], latest['album']
-            artist_dir = root / clean_filename(artist)
-            output = artist_dir / (clean_filename(track) + suffix)
-            if output.exists():
-                status_update(job_id, 'existente', 'Já existe ' + suffix + ' com esse canal e nome.', 100,
-                              str(output.relative_to(root)))
-                return
             status_update(job_id, 'finalizando', 'Salvando tags e capa...' if not is_video else 'Salvando arquivo de vídeo...', 98)
 
         if is_video:
@@ -924,17 +939,22 @@ def download(job_id: int):
         with DB_LOCK:
             check_cancel(job_id)
             with connect() as c:
-                latest = c.execute('SELECT artist,track,album FROM jobs WHERE id=?',(job_id,)).fetchone()
+                latest = c.execute('SELECT artist,track,album,existing_action,replace_path FROM jobs WHERE id=?',(job_id,)).fetchone()
             if (latest['artist'], latest['track'], latest['album']) != (artist, track, album):
                 # An edit in the tiny tagging window is incorporated before saving.
                 artist, track, album = latest['artist'], latest['track'], latest['album']
                 (retag_mp4 if is_video else retag_mp3)(media, artist, track, album)
-                artist_dir = root / clean_filename(artist)
-                output = artist_dir / (clean_filename(track) + suffix)
+            action, replace_path = latest['existing_action'], latest['replace_path']
+            output = choose_final_path(root, artist, track, suffix, action, replace_path)
+            artist_dir = output.parent
+            if not artist_dir.resolve().is_relative_to(root.resolve()):
+                raise RuntimeError('Pasta de destino inválida.')
             artist_dir.mkdir(parents=True, exist_ok=True)
             if not os.access(artist_dir, os.W_OK):
                 raise PermissionError(f'Sem permissão de escrita em {artist_dir}')
-            if output.exists():
+            if output.is_symlink():
+                raise RuntimeError('Destino é um link simbólico; operação cancelada.')
+            if output.exists() and action != 'replace':
                 status_update(job_id, 'existente', 'O arquivo já existia. Não foi sobrescrito.', 100,
                               str(output.relative_to(root)))
                 return
@@ -943,7 +963,12 @@ def download(job_id: int):
                 with media.open('rb') as src, staged.open('xb') as dst:
                     shutil.copyfileobj(src, dst, 1024 * 1024)
                 try:
-                    os.link(staged, output)
+                    if action == 'replace' and replace_path:
+                        # Atomic swap only after download/conversion/tags and staging succeeded.
+                        # The previous file stays untouched on any earlier failure.
+                        os.replace(staged, output)
+                    else:
+                        os.link(staged, output)
                 except FileExistsError:
                     status_update(job_id, 'existente', 'O arquivo já existia. Não foi sobrescrito.', 100,
                                   str(output.relative_to(root)))
@@ -959,6 +984,12 @@ def download(job_id: int):
                         raise
             finally:
                 staged.unlink(missing_ok=True)
+            # Old records must not keep pointing to a file that was replaced.
+            if action == 'replace' and replace_path:
+                with connect() as c:
+                    c.execute("UPDATE jobs SET status='substituido',path='',message=?,updated_at=? "
+                              "WHERE media_type=? AND path=? AND status='concluido' AND id<>?",
+                              ('Arquivo substituído por um novo download.', now(), job['media_type'], replace_path, job_id))
             status_update(job_id, 'concluido', 'Vídeo MP4 salvo na pasta do canal.' if is_video else ('MP3 salvo com capa embutida.' if has_cover else 'MP3 salvo; capa indisponível. Use Atualizar capa em Downloads.'), 100,
                           str(output.relative_to(root)))
     except Exception as exc:
@@ -1174,6 +1205,39 @@ async def analyze(data: VideoQuery, request: Request, user: Annotated[int, Depen
     return result
 
 
+def detect_file_conflict(c: sqlite3.Connection, video_id: str, media_type: str,
+                         requested: Path) -> tuple[str, int | None] | None:
+    """Check the filesystem, not just the SQLite job status.
+
+    Mark missing completed files as absent so they can be downloaded again.
+    Paths always remain relative to their media root (no host paths in responses).
+    """
+    rows = c.execute("SELECT id,path FROM jobs WHERE video_id=? AND media_type=? "
+                     "AND status='concluido' ORDER BY id DESC", (video_id, media_type)).fetchall()
+    found = None
+    for row in rows:
+        try:
+            file = safe_media_path(row['path'], media_type)
+            present = file.is_file() and not file.is_symlink()
+        except (HTTPException, OSError, ValueError):
+            present = False
+        if present and found is None:
+            found = (row['path'], row['id'])
+        elif not present:
+            c.execute("UPDATE jobs SET status='ausente', message=?, updated_at=? WHERE id=?",
+                      ('Arquivo não encontrado no servidor. Permitido baixar novamente.', now(), row['id']))
+    if found:
+        return found
+    root = video_root() if media_type == 'video' else MUSIC
+    if requested.is_symlink() or not requested.resolve().is_relative_to(root.resolve()):
+        raise HTTPException(400, 'Destino inválido: link simbólico não permitido.')
+    if requested.exists():
+        if not requested.is_file():
+            raise HTTPException(409, 'Já existe uma pasta com o nome do arquivo solicitado.')
+        return str(requested.relative_to(root)), None
+    return None
+
+
 @app.post('/api/jobs')
 def add_job(data: NewJob, request: Request, user: Annotated[int, Depends(require_auth)]):
     require_ajax(request)
@@ -1192,25 +1256,52 @@ def add_job(data: NewJob, request: Request, user: Annotated[int, Depends(require
     if not target_root.is_dir() or not os.access(target_root, os.W_OK):
         raise HTTPException(500, 'A pasta de destino não permite gravação. Confira os volumes e permissões.')
     video_id = url.split('v=')[-1]
+    suffix = '.mp4' if data.media_type == 'video' else '.mp3'
+    requested = target_root / clean_filename(artist) / (clean_filename(track) + suffix)
     with DB_LOCK:
         with connect() as c:
-            old = c.execute("SELECT id, status, path FROM jobs WHERE video_id=? AND media_type=? AND status IN ('pendente','baixando','convertendo','finalizando','concluido') ORDER BY id DESC LIMIT 1", (video_id, data.media_type)).fetchone()
-            if old:
-                raise HTTPException(409, f'Este vídeo já foi adicionado (tarefa #{old["id"]}, estado: {old["status"]}).')
-            cur = c.execute('''INSERT INTO jobs (video_id,url,artist,track,album,media_type,video_quality,status,created_at,updated_at,message)
-                               VALUES (?,?,?,?,?,?,?,'pendente',?,?,?)''',
-                            (video_id, url, artist, track, album, data.media_type, data.video_quality, now(), now(), 'Aguardando vez'))
+            in_progress = c.execute("SELECT id,status FROM jobs WHERE video_id=? AND media_type=? "
+                                    "AND status IN ('pendente','baixando','convertendo','finalizando','cancelando') "
+                                    "ORDER BY id DESC LIMIT 1", (video_id, data.media_type)).fetchone()
+            if in_progress:
+                raise HTTPException(409, f'Esta faixa já está na fila (tarefa #{in_progress["id"]}, estado: {in_progress["status"]}).')
+            conflict = detect_file_conflict(c, video_id, data.media_type, requested)
+            if conflict and data.existing_action == 'ask':
+                rel_path, old_id = conflict
+                raise HTTPException(409, detail={
+                    'code': 'file_exists', 'message': 'Este arquivo já foi baixado e existe no servidor.',
+                    'path': rel_path, 'job_id': old_id, 'media_type': data.media_type})
+            replace_path = conflict[0] if conflict and data.existing_action == 'replace' else ''
+            # No existing file means a fresh download, regardless of the requested action.
+            mode = data.existing_action if conflict else 'ask'
+            cur = c.execute("INSERT INTO jobs (video_id,url,artist,track,album,media_type,video_quality,status, "
+                            "created_at,updated_at,message,existing_action,replace_path) "
+                            "VALUES (?,?,?,?,?,?,?,'pendente',?,?,?,?,?)",
+                            (video_id, url, artist, track, album, data.media_type, data.video_quality,
+                             now(), now(), 'Aguardando vez', mode, replace_path))
             job_id = cur.lastrowid
         JOBS.put(job_id)
-    return {'ok': True, 'id': job_id}
+    return {'ok': True, 'id': job_id, 'action': mode}
 
 
 @app.get('/api/jobs')
 def list_jobs(user: Annotated[int, Depends(require_auth)], limit: int = 60):
     limit = max(1, min(limit, 500))
-    with connect() as c:
-        rows = c.execute('SELECT id,video_id,artist,track,album,media_type,video_quality,status,progress,message,path,created_at,updated_at FROM jobs ORDER BY id DESC LIMIT ?', (limit,)).fetchall()
-        total = c.execute('SELECT COUNT(*) AS count FROM jobs').fetchone()['count']
+    with DB_LOCK:
+        with connect() as c:
+            # Refresh availability on disk so the Downloads tab never says "Concluído"
+            # after a file was manually deleted outside the application.
+            for item in c.execute("SELECT id,path,media_type FROM jobs WHERE status='concluido' ORDER BY id DESC LIMIT ?", (limit,)).fetchall():
+                try:
+                    media = safe_media_path(item['path'], item['media_type'])
+                    exists = media.is_file() and not media.is_symlink()
+                except (HTTPException, OSError, ValueError):
+                    exists = False
+                if not exists:
+                    c.execute("UPDATE jobs SET status='ausente',message=?,updated_at=? WHERE id=?",
+                              ('Arquivo não encontrado no servidor. Pode baixar novamente.', now(), item['id']))
+            rows = c.execute('SELECT id,video_id,artist,track,album,media_type,video_quality,status,progress,message,path,created_at,updated_at FROM jobs ORDER BY id DESC LIMIT ?', (limit,)).fetchall()
+            total = c.execute('SELECT COUNT(*) AS count FROM jobs').fetchone()['count']
     return {'jobs': [dict(row) for row in rows], 'total': total, 'has_more': total > len(rows),
             'music_root': str(MUSIC), 'video_root': str(video_root()), 'version': VERSION}
 
@@ -1301,7 +1392,7 @@ def edit_job(job_id: int, data: EditJob, request: Request, user: Annotated[int, 
                 c.execute('UPDATE jobs SET artist=?,track=?,album=?,path=?,message=?,updated_at=? WHERE id=?',
                           (artist,track,album,path,'Nome e tags atualizados.',now(),job_id))
                 return {'ok':True,'path':path}
-            if row['status'] not in ('pendente','baixando','convertendo','erro','existente'):
+            if row['status'] not in ('pendente','baixando','convertendo','erro','existente','ausente'):
                 raise HTTPException(409, 'Este download não pode ser editado no momento.')
             c.execute('UPDATE jobs SET artist=?,track=?,album=?,updated_at=? WHERE id=?',
                       (artist,track,album,now(),job_id))

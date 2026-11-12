@@ -470,3 +470,9 @@ body:has(.app-shell:not([hidden])){height:100dvh;overflow:hidden}
 @media(max-width:720px){
   #jobs-list .job{content-visibility:auto;contain-intrinsic-size:auto 165px}
 }
+
+/* Escolha de duplicados: também acessível em telas pequenas. */
+.duplicate-path {overflow-wrap:anywhere;padding:10px 12px;border-radius:10px;background:rgba(100,116,139,.12);font-size:.82rem;}
+.duplicate-actions {display:flex;flex-wrap:wrap;gap:9px;}
+.duplicate-actions .btn {min-height:44px;flex:1 1 120px;}
+@media (max-width:480px) { .duplicate-actions {flex-direction:column-reverse;} .duplicate-actions .btn {width:100%;flex:none;} }

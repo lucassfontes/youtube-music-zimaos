@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# YouTube Music ZimaOS v1.5.5 — inicializador GHCR interativo
+# YouTube Music ZimaOS v1.5.6 — inicializador GHCR interativo
 # Inicie com: bash iniciar.sh (também funciona quando o bit de execução é perdido).
 set -uo pipefail
 cd -- "$(dirname -- "${BASH_SOURCE[0]}")" || exit 1
 
-VERSION='1.5.5'
+VERSION='1.5.6'
 DOCKER=(docker)
 SUDO_READY=0
 STARTED=0
@@ -240,12 +240,14 @@ main() {
   if [[ ! -f .env ]]; then
     if [[ ! -f .env.example ]]; then fail 'Arquivo .env.example não encontrado.'; return 1; fi
     cp -- .env.example .env || { fail 'Não foi possível criar .env'; return 1; }
-    info 'Criado .env com as configurações padrão. Músicas e vídeos ficam nas subpastas musicas/ e videos/ do projeto.'
+    info 'Criado .env. Biblioteca em /DATA/AppData/YouTube_Music/{Musica,Videos,dados}.'
   fi
-  # Caminhos fixos relativos ao projeto para evitar salvar arquivos no container ou em pastas externas.
-  CONFIG_PATH="$(pwd -P)/dados"
-  MUSIC_PATH="$(pwd -P)/musicas"
-  VIDEO_PATH="$(pwd -P)/videos"
+  # Caminhos persistentes centralizados no ZimaOS; não dependem da pasta do Compose.
+  LIBRARY_ROOT="$(read_env LIBRARY_ROOT /DATA/AppData/YouTube_Music)"
+  LIBRARY_ROOT="${LIBRARY_ROOT%/}"
+  CONFIG_PATH="${LIBRARY_ROOT}/dados"
+  MUSIC_PATH="${LIBRARY_ROOT}/Musica"
+  VIDEO_PATH="${LIBRARY_ROOT}/Videos"
   APP_PORT="$(read_env APP_PORT 8787)"
   check_path "$CONFIG_PATH" CONFIG_PATH || return 1
   check_path "$MUSIC_PATH" MUSIC_PATH || return 1
@@ -268,7 +270,7 @@ main() {
   info 'Verificando a imagem Docker pronta no GHCR (sem compilação local)...'
   # compose pull obtém atualizações da imagem com a mesma tag quando disponíveis.
   if ! "${DOCKER[@]}" compose pull youtube-music; then
-    if "${DOCKER[@]}" image inspect 'ghcr.io/lucassfontes/youtube-music-zimaos:1.5.5' >/dev/null 2>&1; then
+    if "${DOCKER[@]}" image inspect 'ghcr.io/lucassfontes/youtube-music-zimaos:1.5.6' >/dev/null 2>&1; then
       warn 'Não foi possível atualizar pelo GHCR. Usando a imagem já salva no servidor.'
     else
       fail 'Imagem indisponível no GHCR. Confira se a Action terminou e se o pacote está PÚBLICO no GitHub.'
