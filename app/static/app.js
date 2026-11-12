@@ -876,6 +876,16 @@ function jobElement(job) {
       finally { coverButton.disabled = false; coverButton.textContent = 'Atualizar capa'; }
     });
     controls.append(coverButton);
+    const metaButton = smallButton('Atualizar metadados','artwork-action',async () => {
+      metaButton.disabled = true; metaButton.textContent = 'Atualizando...';
+      try {
+        const response = await api(`/api/jobs/${job.id}/metadata`,'POST');
+        toast(response.message || 'Metadados gravados no MP3 para VLC.');
+        await refreshJobs();
+      } catch(error) {toast(error.message,true);}
+      finally {metaButton.disabled = false; metaButton.textContent = 'Atualizar metadados';}
+    });
+    controls.append(metaButton);
   }
   if (['pendente','baixando','convertendo','finalizando'].includes(job.status)) {
     controls.append(smallButton('✕ Cancelar','cancel',async () => {
@@ -927,6 +937,30 @@ async function refreshJobs() {
 }
 loadState();
 setInterval(() => { if (!document.hidden && !$('pane-downloads').hidden) refreshJobs(); }, 2500);
+
+// Add ID3 tags to older MP3 files without downloading audio again.
+let metadataRepairPolling = false;
+async function refreshMetadataRepairStatus() {
+  if (metadataRepairPolling || $('app').hidden) return;
+  metadataRepairPolling = true;
+  try {
+    const state = await api('/api/metadata/repair');
+    const node = $('metadata-repair-status');
+    $('repair-metadata').disabled = Boolean(state.running);
+    node.hidden = !state.running && !state.total && !state.message;
+    if (!node.hidden) node.textContent = `${state.message || ''} ${state.processed || 0}/${state.total || 0} · Atualizados: ${state.updated || 0} · Erros: ${state.failed || 0}`;
+    if (!state.running && state.total) await refreshJobs();
+  } catch(e) {toast(e.message,true);}
+  finally {metadataRepairPolling = false;}
+}
+$('repair-metadata').addEventListener('click', async () => {
+  $('repair-metadata').disabled = true;
+  $('metadata-repair-status').hidden = false;
+  $('metadata-repair-status').textContent = 'Preparando atualização dos metadados...';
+  try {await api('/api/metadata/repair','POST'); await refreshMetadataRepairStatus();}
+  catch(e){toast(e.message,true);$('repair-metadata').disabled=false;}
+});
+setInterval(() => {if (!document.hidden && !$('pane-downloads').hidden) refreshMetadataRepairStatus();}, 2600);
 
 // Recover thumbnails for completed MP3s from earlier versions without re-downloading music.
 let coverRepairPolling = false;

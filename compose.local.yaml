@@ -2,7 +2,7 @@
 # Use: docker compose -f compose.yaml -f compose.local.yaml up -d --build
 services:
   youtube-music:
-    image: youtube-music-zimaos:1.5.6-local
+    image: youtube-music-zimaos:1.5.7-local
     build:
       context: .
       dockerfile: Dockerfile

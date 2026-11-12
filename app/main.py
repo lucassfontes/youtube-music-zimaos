@@ -30,13 +30,13 @@ import yt_dlp
 from PIL import Image, ImageOps, UnidentifiedImageError
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse, StreamingResponse
-from mutagen.id3 import APIC, ID3, ID3NoHeaderError, TALB, TIT2, TPE1, TPE2, WOAS
+from mutagen.id3 import APIC, ID3, ID3NoHeaderError, TALB, TIT2, TPE1, TPE2, WOAS, TDRC, TCON, TRCK, TPUB, TSRC
 from mutagen.mp4 import MP4
 from pydantic import BaseModel, Field
 
 from metadata import VIDEO_ID, clean, clean_filename, guess_metadata, youtube_video_url
 
-VERSION = '1.5.6'
+VERSION = '1.5.7'
 CONFIG = Path(os.environ.get('CONFIG_DIR', '/config'))
 MUSIC = Path(os.environ.get('MUSIC_DIR', '/music'))
 DB = CONFIG / 'app.db'
@@ -60,6 +60,8 @@ SETUP_LOCK = threading.Lock()
 SEARCH_SEMAPHORE = asyncio.Semaphore(2)
 COVER_REPAIR_LOCK = threading.Lock()
 COVER_REPAIR_STATE = {"running": False, "total": 0, "processed": 0, "updated": 0, "skipped": 0, "failed": 0, "message": ""}
+METADATA_REPAIR_LOCK = threading.Lock()
+METADATA_REPAIR_STATE = {"running": False, "total": 0, "processed": 0, "updated": 0, "skipped": 0, "failed": 0, "message": ""}
 
 
 def now() -> str:
@@ -752,28 +754,163 @@ def write_cover(path: Path, cover: tuple[bytes, str]):
     tags.save(path, v2_version=3)
 
 
-def tag_mp3(path: Path, artist: str, track: str, album: str, url: str, info: dict) -> bool:
-    """Write ID3 tags and embed the actual video thumbnail (if obtainable)."""
+def additional_music_metadata(info: dict) -> dict:
+    """Use verified, structured music fields provided by yt-dlp; do not guess a release date.
+
+    YouTube upload_date is NOT necessarily the song's release date; do not use it.
+    Avoid treating an arbitrary video title as a music album or genre.
+    """
+    info = info or {}
+    result = {}
+    date = str(info.get('release_date') or '').strip()
+    year = str(info.get('release_year') or '').strip()
+    if len(date) == 8 and date.isdecimal() and 1900 <= int(date[:4]) <= datetime.now().year + 1:
+        try:
+            result['date'] = datetime.strptime(date, '%Y%m%d').strftime('%Y-%m-%d')
+        except ValueError:
+            pass
+    if 'date' not in result and year.isdecimal() and 1900 <= int(year) <= datetime.now().year + 1:
+        result['date'] = year
+    genre = info.get('genre')
+    if isinstance(genre, str) and 1 < len(genre.strip()) <= 80:
+        result['genre'] = clean(genre)
+    if isinstance(info.get('track_number'), (int, str)):
+        number = str(info['track_number']).strip()
+        if number.isdecimal() and 1 <= int(number) <= 999:
+            result['track_number'] = str(int(number))
+    publisher = info.get('record_label') or info.get('label')
+    if isinstance(publisher, str) and 1 < len(publisher.strip()) <= 120:
+        result['publisher'] = clean(publisher)
+    isrc = str(info.get('isrc') or '').strip().upper().replace('-', '')
+    if re.fullmatch(r'[A-Z]{2}[A-Z0-9]{3}[0-9]{7}', isrc):
+        result['isrc'] = isrc
+    album = info.get('album')
+    if isinstance(album, str) and 1 < len(clean(album)) <= 120:
+        result['album'] = clean(album)
+    return result
+
+
+def tag_mp3(path: Path, artist: str, track: str, album: str, url: str, info: dict,
+            *, cover_if_missing_only: bool = False) -> bool:
+    """Add VLC-compatible ID3v2.3 text, provenance, optional release fields and front cover.
+
+    Artist comes from the channel/user edit, not automatically from the recording credits.
+    Extras are only refreshed when explicitly present in metadata, preserving older fields
+    if YouTube no longer supplies them. Never fabricate a release date from upload_date.
+    """
     try:
         tags = ID3(path)
     except ID3NoHeaderError:
         tags = ID3()
+    extras = additional_music_metadata(info)
+    album_tag = clean(album) or extras.get('album', '')
     for key in ('TIT2', 'TPE1', 'TPE2', 'TALB', 'WOAS'):
         tags.delall(key)
     tags.add(TIT2(encoding=3, text=[track]))
     tags.add(TPE1(encoding=3, text=[artist]))
     tags.add(TPE2(encoding=3, text=[artist]))
-    if album:
-        tags.add(TALB(encoding=3, text=[album]))
+    if album_tag:
+        tags.add(TALB(encoding=3, text=[album_tag]))
     tags.add(WOAS(url=url))
-    tags.save(path, v2_version=3)
-    # If image download fails, keep an existing cover (do not wipe it out).
-    image_info = dict(info or {})
-    image_info.setdefault('id', youtube_video_url(url).split('v=')[-1])
-    cover = thumbnail_bytes(image_info)
-    if cover:
-        write_cover(path, cover)
+    extra_frames = {'date': ('TDRC', TDRC), 'genre': ('TCON', TCON),
+                    'track_number': ('TRCK', TRCK), 'publisher': ('TPUB', TPUB),
+                    'isrc': ('TSRC', TSRC)}
+    for key, (frame_id, frame_class) in extra_frames.items():
+        if extras.get(key):
+            tags.delall(frame_id)
+            tags.add(frame_class(encoding=3, text=[extras[key]]))
+    tags.save(path, v2_version=3)  # ID3v2.3 is broadly compatible with VLC and other MP3 players.
+    # Keep manually selected/old covers intact when repairing metadata.
+    has_cover = embedded_cover(path) is not None
+    if not (cover_if_missing_only and has_cover):
+        image_info = dict(info or {})
+        image_info.setdefault('id', youtube_video_url(url).split('v=')[-1])
+        cover = thumbnail_bytes(image_info)
+        if cover:
+            write_cover(path, cover)
     return embedded_cover(path) is not None
+
+
+def youtube_music_info(url: str) -> dict:
+    """Metadata-only extraction: never download the audio/video."""
+    with yt_dlp.YoutubeDL({'quiet': True, 'no_warnings': True, 'noplaylist': True,
+                           'skip_download': True, 'socket_timeout': 20,
+                           'retries': 1, 'cachedir': str(CONFIG / 'cache')}) as ydl:
+        return ydl.extract_info(youtube_video_url(url), download=False) or {}
+
+
+def refresh_job_metadata(job_id: int) -> dict:
+    """Rebuild ID3 metadata on an existing MP3 without requesting audio again.
+
+    Save to a sibling temp copy, then atomic replace: errors preserve the original MP3.
+    A YouTube metadata outage still allows basic artist/title/album tags to be written.
+    """
+    with DB_LOCK:
+        with connect() as c:
+            row = c.execute('SELECT * FROM jobs WHERE id=?', (job_id,)).fetchone()
+        if not row or row['status'] != 'concluido' or row['media_type'] != 'audio':
+            raise HTTPException(409, 'Somente músicas MP3 concluídas podem receber metadados.')
+        path = safe_music_path(row['path'])
+        if not path.is_file():
+            raise HTTPException(404, 'O MP3 não existe mais na pasta de músicas.')
+        url, old_path = row['url'], row['path']
+    try:
+        info = youtube_music_info(url)
+        retrieved = True
+    except Exception as exc:
+        LOG.warning('Não foi possível obter metadados extras para %s: %s', job_id, exc)
+        info = {}
+        retrieved = False
+    with DB_LOCK:
+        with connect() as c:
+            row = c.execute('SELECT * FROM jobs WHERE id=?', (job_id,)).fetchone()
+            if (not row or row['status'] != 'concluido' or row['media_type'] != 'audio'
+                    or row['path'] != old_path):
+                raise HTTPException(409, 'O download mudou durante a atualização.')
+            path = safe_music_path(row['path'])
+            if not path.is_file():
+                raise HTTPException(404, 'O arquivo MP3 não foi encontrado.')
+            # Use the existing user-edited artist/track; never overwrite the audio.
+            album = row['album'] or additional_music_metadata(info).get('album', '')
+            tmp = path.with_name(f'.{path.stem}.{secrets.token_hex(5)}.metadata.mp3')
+            try:
+                shutil.copyfile(path, tmp)
+                cover = tag_mp3(tmp, row['artist'], row['track'], album, url, info,
+                                cover_if_missing_only=True)
+                os.replace(tmp, path)
+            finally:
+                tmp.unlink(missing_ok=True)
+            msg = ('Metadados e capa salvos no MP3 para VLC.' if cover
+                   else 'Metadados ID3 salvos no MP3 para VLC; capa não disponível.')
+            if not retrieved:
+                msg += ' Dados extras do YouTube indisponíveis.'
+            c.execute('UPDATE jobs SET album=?,message=?,updated_at=? WHERE id=?',
+                      (album, msg, now(), job_id))
+    return {'ok': True, 'retrieved_from_youtube': retrieved, 'cover': cover,
+            'album': album, 'message': msg}
+
+
+def run_metadata_repair():
+    try:
+        with connect() as c:
+            rows = c.execute("SELECT id FROM jobs WHERE status='concluido' AND media_type='audio' ORDER BY id DESC").fetchall()
+        with METADATA_REPAIR_LOCK:
+            METADATA_REPAIR_STATE.update(total=len(rows), message='Atualizando metadados dos arquivos MP3...')
+        for row in rows:
+            try:
+                refresh_job_metadata(row['id'])
+                key = 'updated'
+            except Exception as exc:
+                LOG.warning('Não foi possível atualizar metadados do MP3 %s: %s', row['id'], exc)
+                key = 'failed'
+            with METADATA_REPAIR_LOCK:
+                METADATA_REPAIR_STATE['processed'] += 1
+                METADATA_REPAIR_STATE[key] += 1
+        with METADATA_REPAIR_LOCK:
+            METADATA_REPAIR_STATE['message'] = 'Atualização dos metadados concluída.'
+    finally:
+        with METADATA_REPAIR_LOCK:
+            METADATA_REPAIR_STATE['running'] = False
 
 
 def refresh_job_cover(job_id: int, *, force: bool = False) -> str:
@@ -933,6 +1070,12 @@ def download(job_id: int):
         if is_video:
             retag_mp4(media, artist, track, album)
         else:
+            if not album:
+                album = additional_music_metadata(info or {}).get('album', '')
+                if album:
+                    with DB_LOCK:
+                        with connect() as c:
+                            c.execute("UPDATE jobs SET album=? WHERE id=? AND album=''", (album, job_id))
             has_cover = tag_mp3(media, artist, track, album, url, info or {})
         check_cancel(job_id)
         # Serialize the final move with edits and cancellation (fast filesystem operation).
@@ -1304,6 +1447,30 @@ def list_jobs(user: Annotated[int, Depends(require_auth)], limit: int = 60):
             total = c.execute('SELECT COUNT(*) AS count FROM jobs').fetchone()['count']
     return {'jobs': [dict(row) for row in rows], 'total': total, 'has_more': total > len(rows),
             'music_root': str(MUSIC), 'video_root': str(video_root()), 'version': VERSION}
+
+
+@app.post('/api/jobs/{job_id}/metadata')
+async def update_job_metadata(job_id: int, request: Request, user: Annotated[int, Depends(require_auth)]):
+    require_ajax(request)
+    return await asyncio.to_thread(refresh_job_metadata, job_id)
+
+
+@app.post('/api/metadata/repair')
+def start_metadata_repair(request: Request, user: Annotated[int, Depends(require_auth)]):
+    require_ajax(request)
+    with METADATA_REPAIR_LOCK:
+        if METADATA_REPAIR_STATE['running']:
+            raise HTTPException(409, 'A atualização de metadados já está em andamento.')
+        METADATA_REPAIR_STATE.update(running=True,total=0,processed=0,updated=0,skipped=0,failed=0,
+                                     message='Procurando MP3s antigos...')
+    threading.Thread(target=run_metadata_repair, name='metadata-repair', daemon=True).start()
+    return {'ok': True}
+
+
+@app.get('/api/metadata/repair')
+def get_metadata_repair_status(user: Annotated[int, Depends(require_auth)]):
+    with METADATA_REPAIR_LOCK:
+        return dict(METADATA_REPAIR_STATE)
 
 
 @app.get('/api/jobs/{job_id}/cover')

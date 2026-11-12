@@ -34,7 +34,7 @@ class MobileLayout155(unittest.TestCase):
         self.assertIn("art.loading = 'lazy'",JS)
 
     def test_version_updated(self):
-        self.assertIn('v1.5.6',HTML)
-        self.assertIn("VERSION = '1.5.6'",(ROOT/'app/main.py').read_text())
+        self.assertIn('v1.5.7',HTML)
+        self.assertIn("VERSION = '1.5.7'",(ROOT/'app/main.py').read_text())
 
 if __name__=='__main__': unittest.main()

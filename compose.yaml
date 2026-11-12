@@ -9,15 +9,15 @@ services:
       - ${LIBRARY_ROOT:-/DATA/AppData/YouTube_Music}:/biblioteca
     entrypoint: ["/bin/sh", "-ec"]
     command: >-
-      mkdir -p /biblioteca/dados /biblioteca/Musica /biblioteca/Videos &&
+      mkdir -p /biblioteca/dados /biblioteca/Biblioteca/Musicas /biblioteca/Biblioteca/Videos &&
       chown -R 1000:1000 /biblioteca/dados &&
-      chown 1000:1000 /biblioteca/Musica /biblioteca/Videos
+      chown 1000:1000 /biblioteca/Biblioteca/Musicas /biblioteca/Biblioteca/Videos
 
   youtube-music:
     depends_on:
       preparar-pastas:
         condition: service_completed_successfully
-    image: ghcr.io/lucassfontes/youtube-music-zimaos:1.5.6
+    image: ghcr.io/lucassfontes/youtube-music-zimaos:1.5.7
     container_name: youtube-music-zimaos
     restart: unless-stopped
     init: true
@@ -27,10 +27,10 @@ services:
       TZ: ${TZ:-Europe/Brussels}
       COOKIE_SECURE: ${COOKIE_SECURE:-false}
     volumes:
-      # A biblioteca fica em /DATA/AppData/YouTube_Music, mesmo após reiniciar/recriar o container.
+      # Arquivos em /DATA/AppData/YouTube_Music/Biblioteca/{Musicas,Videos}, dados fora da biblioteca.
       - ${LIBRARY_ROOT:-/DATA/AppData/YouTube_Music}/dados:/config
-      - ${LIBRARY_ROOT:-/DATA/AppData/YouTube_Music}/Musica:/music
-      - ${LIBRARY_ROOT:-/DATA/AppData/YouTube_Music}/Videos:/videos
+      - ${LIBRARY_ROOT:-/DATA/AppData/YouTube_Music}/Biblioteca/Musicas:/music
+      - ${LIBRARY_ROOT:-/DATA/AppData/YouTube_Music}/Biblioteca/Videos:/videos
     security_opt:
       - no-new-privileges:true
     healthcheck:
@@ -62,6 +62,6 @@ x-casaos:
   category: Entertainment
   author: Lucas Fontes
   developer: Lucas Fontes
-  version: "1.5.6"
+  version: "1.5.7"
   architectures:
     - amd64

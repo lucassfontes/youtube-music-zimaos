@@ -48,7 +48,7 @@
       <header class="topbar">
         <div class="mobile-topbar-brand" aria-hidden="true"><img src="/icon.png" alt="" /><strong>Music Station</strong></div>
         <span class="breadcrumb" id="current-section">Buscar músicas</span>
-        <div class="topbar-right"><span class="version">v1.5.6</span><button id="mobile-logout" class="mobile-logout" type="button" title="Sair da conta" aria-label="Sair da conta"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H4"/><path d="M12 3h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7"/></svg></button></div>
+        <div class="topbar-right"><span class="version">v1.5.7</span><button id="mobile-logout" class="mobile-logout" type="button" title="Sair da conta" aria-label="Sair da conta"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H4"/><path d="M12 3h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7"/></svg></button></div>
       </header>
       <main class="page-inner">
         <section class="tab-pane active" id="pane-search" role="tabpanel" aria-labelledby="tab-search" data-pane="search">
@@ -81,7 +81,7 @@
         </section>
         <section class="tab-pane" id="pane-downloads" role="tabpanel" aria-labelledby="tab-downloads" data-pane="downloads" hidden>
           <div class="heading compact-heading"><div><p class="eyebrow">ATIVIDADE</p><h1>Downloads</h1><p class="muted">Músicas MP3 e vídeos MP4: acompanhe, cancele, edite ou exclua.</p></div></div>
-          <section class="panel queue-panel"><div class="panel-top library-panel-top"><div><h2>Downloads e biblioteca</h2></div><div class="library-tools"><button class="btn secondary" id="repair-covers" type="button" title="Adicionar capas embutidas a MP3s antigos">Adicionar capas antigas</button><button class="btn subtle" id="refresh-jobs" type="button">↻ Atualizar</button></div></div><p class="cover-repair-status muted" id="cover-repair-status" role="status" hidden></p><div id="jobs-list" class="jobs-list"><p class="empty">Nenhum download ainda.</p></div><div class="history-more"><button id="more-jobs" type="button" class="btn secondary" hidden>Mostrar mais downloads</button></div></section>
+          <section class="panel queue-panel"><div class="panel-top library-panel-top"><div><h2>Downloads e biblioteca</h2></div><div class="library-tools"><button class="btn secondary" id="repair-metadata" type="button" title="Incorporar metadados ID3 em MP3s antigos para VLC">Atualizar metadados antigos</button><button class="btn secondary" id="repair-covers" type="button" title="Adicionar capas embutidas a MP3s antigos">Adicionar capas antigas</button><button class="btn subtle" id="refresh-jobs" type="button">↻ Atualizar</button></div></div><p class="cover-repair-status muted" id="cover-repair-status" role="status" hidden></p><p class="cover-repair-status muted" id="metadata-repair-status" role="status" hidden></p><div id="jobs-list" class="jobs-list"><p class="empty">Nenhum download ainda.</p></div><div class="history-more"><button id="more-jobs" type="button" class="btn secondary" hidden>Mostrar mais downloads</button></div></section>
         </section>
       </main>
       <section id="player-panel" class="player-dock" aria-label="Reprodutor de música" hidden>

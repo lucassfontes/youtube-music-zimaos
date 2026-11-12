@@ -133,7 +133,7 @@ class DuplicateTests(unittest.TestCase):
         self.assertIn('function askExistingFile(details)',js)
         self.assertIn('createDownloadJob(',js)
         comp=(root/'compose.yaml').read_text()
-        for name in ('YouTube_Music','/Musica:/music','/Videos:/videos','/dados:/config'):
+        for name in ('YouTube_Music','/Biblioteca/Musicas:/music','/Biblioteca/Videos:/videos','/dados:/config'):
             self.assertIn(name,comp)
 
 if __name__=='__main__': unittest.main()

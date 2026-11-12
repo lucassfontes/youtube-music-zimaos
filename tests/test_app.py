@@ -129,9 +129,9 @@ class AppTests(unittest.TestCase):
     def test_project_local_persistence(self):
         compose=(Path(__file__).resolve().parents[1]/'compose.yaml').read_text()
         ignore=(Path(__file__).resolve().parents[1]/'.dockerignore').read_text()
-        self.assertIn('YouTube_Music}/Musica:/music', compose)
+        self.assertIn('YouTube_Music}/Biblioteca/Musicas:/music', compose)
         self.assertIn('YouTube_Music}/dados:/config', compose)
-        self.assertIn('musicas/', ignore)
+        self.assertIn('Biblioteca/', ignore)
         self.assertIn('dados/', ignore)
 
     def test_download_organizes_file_with_manual_artist_override(self):
