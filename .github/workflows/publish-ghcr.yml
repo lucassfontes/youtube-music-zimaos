@@ -1,0 +1,46 @@
+name: Publicar Docker no GHCR
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Buscar código
+        uses: actions/checkout@v4
+      - name: Preparar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Entrar no GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Gerar tags
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/lucassfontes/youtube-music-zimaos
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+            type=raw,value=1.5.5,enable=${{ github.ref == 'refs/heads/main' }}
+            type=semver,pattern={{version}}
+      - name: Construir e publicar imagem (amd64)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
